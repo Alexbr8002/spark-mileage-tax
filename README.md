@@ -1,4 +1,4 @@
-# Spark Mileage + Taxes — PWA v0.1
+# Spark Mileage + Taxes — PWA v0.2
 
 ## Qué incluye
 - Registro diario manual:
@@ -50,3 +50,9 @@ Esta versión incluye iconos PNG:
 - icons/icon-maskable-512.png
 
 En Android/Chrome, al usar “Add to Home screen”, debe aparecer como icono de app.
+
+
+## Cambio v0.2
+- Se quitó `capture="environment"` de los campos de imagen.
+- Ahora Android/Chrome debe ofrecer Cámara, Galería o Archivos al cargar fotos de odómetro/bomba.
+- Service worker actualizado a cache v02 para evitar que el navegador mantenga la versión anterior.
