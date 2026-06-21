@@ -1,4 +1,4 @@
-# Spark Mileage + Taxes — PWA v0.2
+# Spark Mileage + Taxes — PWA v0.5
 
 ## Qué incluye
 - Registro diario manual:
@@ -56,3 +56,27 @@ En Android/Chrome, al usar “Add to Home screen”, debe aparecer como icono de
 - Se quitó `capture="environment"` de los campos de imagen.
 - Ahora Android/Chrome debe ofrecer Cámara, Galería o Archivos al cargar fotos de odómetro/bomba.
 - Service worker actualizado a cache v02 para evitar que el navegador mantenga la versión anterior.
+
+
+## Cambio v0.3
+- Los campos de imagen usan extensiones/MIME explícitos: `.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp`.
+- Se evita `accept="image/*"` porque en algunos Android/Chrome prioriza cámara.
+- Se eliminó `capture`.
+- Flujo recomendado: tomar foto con la cámara normal del teléfono y luego subir desde Galería/Archivos.
+- Service worker actualizado a cache v03.
+
+
+## Cambio v0.4
+- El botón Calcular funciona aunque IndexedDB falle al iniciar.
+- Valida Odo inicio, Odo fin, MPG y Precio gas.
+- Muestra mensajes claros cuando faltan campos.
+- Baja automáticamente al resultado después de calcular.
+- Las fotos todavía son evidencia; la extracción automática no está conectada.
+
+
+## Cambio v0.5
+- Botones Editar/Borrar con event delegation, sin depender de `onclick` inline.
+- Editar abre el registro, cambia el botón a “Actualizar día” y desplaza al formulario.
+- Guardar no permite crear registros vacíos.
+- Al editar se conservan las fotos existentes si no se eligen imágenes nuevas.
+- Si cambia la fecha durante una edición, se elimina la clave anterior para evitar duplicados.

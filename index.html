@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
-  <title>Spark Mileage + Taxes</title>
+  <title>Spark Mileage + Taxes v0.5</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -226,14 +226,14 @@
 </head>
 <body>
 <header>
-  <h1>Spark Mileage + Taxes</h1>
+  <h1>Spark Mileage + Taxes <span style="font-size:12px;color:#9ca3af;font-weight:700;">v0.5</span></h1>
   <nav class="tabs" aria-label="Secciones">
-    <button class="tab active" data-tab="dashboard">Dashboard</button>
-    <button class="tab" data-tab="day">Día</button>
-    <button class="tab" data-tab="earnings">Ganancias</button>
-    <button class="tab" data-tab="reports">Reportes</button>
-    <button class="tab" data-tab="import">Importar</button>
-    <button class="tab" data-tab="settings">Ajustes</button>
+    <button type="button" class="tab active" data-tab="dashboard">Dashboard</button>
+    <button type="button" class="tab" data-tab="day">Día</button>
+    <button type="button" class="tab" data-tab="earnings">Ganancias</button>
+    <button type="button" class="tab" data-tab="reports">Reportes</button>
+    <button type="button" class="tab" data-tab="import">Importar</button>
+    <button type="button" class="tab" data-tab="settings">Ajustes</button>
   </nav>
 </header>
 
@@ -312,14 +312,15 @@
       </div>
 
       <div class="notice">
-        v0.1 guarda los datos manuales y las imágenes como respaldo local. OCR/extracción automática queda para v0.2.
+        v0.5: Editar y Guardar día corregidos. Los registros incompletos no se guardan sin confirmación.
       </div>
 
       <div class="btnrow">
-        <button class="good" id="calcDayBtn">Calcular</button>
-        <button id="saveDayBtn">Guardar día</button>
-        <button class="secondary" id="clearDayBtn">Limpiar</button>
+        <button type="button" class="good" id="calcDayBtn">Calcular</button>
+        <button type="button" id="saveDayBtn">Guardar día</button>
+        <button type="button" class="secondary" id="clearDayBtn">Limpiar</button>
       </div>
+      <div id="calcStatus" class="notice">Completa Odo inicio, Odo fin, MPG y Precio gas.</div>
     </div>
 
     <div class="card">
@@ -359,15 +360,15 @@
         </div>
         <div>
           <label>Foto/captura Spark earnings</label>
-          <input type="file" id="imgEarnings" accept="image/*">
+          <input type="file" id="imgEarnings" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
         </div>
       </div>
       <div class="notice">
         Cash tips no se registran. Tips aquí = Confirmed Tips dentro de Spark.
       </div>
       <div class="btnrow">
-        <button id="saveEarningsBtn">Guardar ganancias</button>
-        <button class="secondary" id="clearEarningsBtn">Limpiar</button>
+        <button type="button" id="saveEarningsBtn">Guardar ganancias</button>
+        <button type="button" class="secondary" id="clearEarningsBtn">Limpiar</button>
       </div>
     </div>
 
@@ -405,14 +406,14 @@
         </div>
         <div>
           <label>&nbsp;</label>
-          <button id="runReportBtn">Generar reporte</button>
+          <button type="button" id="runReportBtn">Generar reporte</button>
         </div>
       </div>
       <div id="reportOutput"></div>
       <div class="btnrow">
-        <button class="secondary" id="exportJsonBtn">Exportar backup JSON</button>
-        <button class="secondary" id="exportDaysCsvBtn">Exportar días CSV</button>
-        <button class="secondary" id="exportEarningsCsvBtn">Exportar earnings CSV</button>
+        <button type="button" class="secondary" id="exportJsonBtn">Exportar backup JSON</button>
+        <button type="button" class="secondary" id="exportDaysCsvBtn">Exportar días CSV</button>
+        <button type="button" class="secondary" id="exportEarningsCsvBtn">Exportar earnings CSV</button>
       </div>
     </div>
   </section>
@@ -423,8 +424,8 @@
       <p class="small">Pega aquí JSON semanal. La app acepta el formato que estamos usando: days + weekly_totals + odometer_week.</p>
       <textarea id="importText" class="mono" placeholder='{"week_start":"2026-06-08","week_end":"2026-06-14","days":[...]}'></textarea>
       <div class="btnrow">
-        <button id="importJsonBtn">Importar JSON</button>
-        <button class="secondary" id="previewJsonBtn">Previsualizar</button>
+        <button type="button" id="importJsonBtn">Importar JSON</button>
+        <button type="button" class="secondary" id="previewJsonBtn">Previsualizar</button>
       </div>
       <div id="importPreview"></div>
     </div>
@@ -433,7 +434,7 @@
       <h2>Restaurar backup completo</h2>
       <input type="file" id="restoreFile" accept="application/json">
       <div class="btnrow">
-        <button class="danger" id="restoreBtn">Restaurar backup</button>
+        <button type="button" class="danger" id="restoreBtn">Restaurar backup</button>
       </div>
       <div class="notice">
         Restaurar reemplaza/mezcla registros por ID. Haz backup antes.
@@ -463,8 +464,8 @@
         </div>
       </div>
       <div class="btnrow">
-        <button id="saveSettingsBtn">Guardar ajustes</button>
-        <button class="danger" id="wipeBtn">Borrar toda la BD</button>
+        <button type="button" id="saveSettingsBtn">Guardar ajustes</button>
+        <button type="button" class="danger" id="wipeBtn">Borrar toda la BD</button>
       </div>
       <div class="notice">
         El IRS rate queda editable por año. Default v0.1: 0.725 para 2026.
@@ -474,8 +475,8 @@
 </main>
 
 <div class="footerbar">
-  <button class="secondary" id="quickTodayBtn">Hoy</button>
-  <button class="secondary" id="quickReportBtn">Reporte</button>
+  <button type="button" class="secondary" id="quickTodayBtn">Hoy</button>
+  <button type="button" class="secondary" id="quickReportBtn">Reporte</button>
 </div>
 
 <script>
@@ -488,6 +489,8 @@ let settings = {
   taxYear: new Date().getFullYear(),
   vehicleMethod: "standard_mileage_only"
 };
+let editingDayDate = null;
+
 
 const $ = (id) => document.getElementById(id);
 const money = (n) => isFinite(n) ? "$" + Number(n).toFixed(2) : "—";
@@ -629,8 +632,34 @@ function metric(label, value, cls="") {
   return `<div class="metric"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`;
 }
 
-function renderDayCalc() {
+function renderDayCalc(scrollToResult = false) {
   const d = calcDayObj();
+  const missing = [];
+
+  if (d.odo_start == null) missing.push("Odo inicio");
+  if (d.odo_end == null) missing.push("Odo fin");
+  if (d.mpg == null || d.mpg <= 0) missing.push("MPG");
+  if (d.gas_price_per_gallon == null || d.gas_price_per_gallon <= 0) missing.push("Precio gas");
+
+  const status = $("calcStatus");
+
+  if (d.odo_start != null && d.odo_end != null && d.odo_end < d.odo_start) {
+    if (status) {
+      status.className = "notice bad";
+      status.textContent = "Error: Odo fin no puede ser menor que Odo inicio.";
+    }
+  } else if (missing.length) {
+    if (status) {
+      status.className = "notice warn";
+      status.textContent = "Faltan campos para el cálculo completo: " + missing.join(", ") + ".";
+    }
+  } else {
+    if (status) {
+      status.className = "notice ok";
+      status.textContent = "Cálculo actualizado correctamente.";
+    }
+  }
+
   $("dayCalc").innerHTML = [
     metric("Millas Spark", miles(d.business_miles)),
     metric("Galones usados estimados", d.estimated_gallons_used != null ? d.estimated_gallons_used.toFixed(3) + " gal" : "—"),
@@ -639,15 +668,57 @@ function renderDayCalc() {
     metric("Costo operativo interno", money(d.internal_total_cost)),
     metric("Deducción IRS millas", money(d.irs_mileage_deduction))
   ].join("");
+
+  if (scrollToResult) {
+    $("dayCalc").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 async function saveDay() {
   const d = calcDayObj();
-  d.image_start_id = await fileToDataUrl($("imgStart"));
-  d.image_fuel_id = await fileToDataUrl($("imgFuel"));
-  d.image_end_id = await fileToDataUrl($("imgEnd"));
+  const missing = [];
+
+  if (d.odo_start == null) missing.push("Odo inicio");
+  if (d.odo_end == null) missing.push("Odo fin");
+  if (d.mpg == null || d.mpg <= 0) missing.push("MPG");
+  if (d.gas_price_per_gallon == null || d.gas_price_per_gallon <= 0) missing.push("Precio gas");
+
+  if (missing.length) {
+    const status = $("calcStatus");
+    if (status) {
+      status.className = "notice bad";
+      status.textContent = "No se guardó. Faltan: " + missing.join(", ") + ".";
+    }
+    alert("No se guardó el día. Faltan: " + missing.join(", "));
+    return;
+  }
+
+  if (d.odo_end < d.odo_start) {
+    alert("Odo fin no puede ser menor que Odo inicio.");
+    return;
+  }
+
+  const oldKey = editingDayDate || d.work_date;
+  const existing = await getOne("days", oldKey);
+
+  const newStartImage = await fileToDataUrl($("imgStart"));
+  const newFuelImage = await fileToDataUrl($("imgFuel"));
+  const newEndImage = await fileToDataUrl($("imgEnd"));
+
+  d.image_start_id = newStartImage || existing?.image_start_id || null;
+  d.image_fuel_id = newFuelImage || existing?.image_fuel_id || null;
+  d.image_end_id = newEndImage || existing?.image_end_id || null;
+  d.created_at = existing?.created_at || new Date().toISOString();
+
+  if (editingDayDate && editingDayDate !== d.work_date) {
+    await deleteOne("days", editingDayDate);
+  }
+
   await putOne("days", d);
-  alert("Día guardado");
+
+  alert(editingDayDate ? "Día actualizado" : "Día guardado");
+  editingDayDate = null;
+  $("saveDayBtn").textContent = "Guardar día";
   clearDay(false);
   await refreshAll();
 }
@@ -656,22 +727,48 @@ function clearDay(resetDate=true) {
   if (resetDate) $("workDate").value = todayISO();
   ["odoStart","odoEnd","mpg","gasPrice","fuelTotal","fuelGallons","imgStart","imgFuel","imgEnd"].forEach(id => $(id).value = "");
   $("dayStatus").value = "closed";
+  editingDayDate = null;
+  $("saveDayBtn").textContent = "Guardar día";
   renderDayCalc();
 }
 
 async function loadDay(date) {
-  const d = await getOne("days", date);
-  if (!d) return;
-  $("workDate").value = d.work_date;
-  $("dayStatus").value = d.status || "closed";
-  $("odoStart").value = d.odo_start ?? "";
-  $("odoEnd").value = d.odo_end ?? "";
-  $("mpg").value = d.mpg ?? "";
-  $("gasPrice").value = d.gas_price_per_gallon ?? "";
-  $("fuelTotal").value = d.fuel_total ?? "";
-  $("fuelGallons").value = d.fuel_gallons ?? "";
-  showTab("day");
-  renderDayCalc();
+  try {
+    const d = await getOne("days", date);
+
+    if (!d) {
+      alert("No se encontró el registro " + date);
+      return;
+    }
+
+    editingDayDate = date;
+    $("workDate").value = d.work_date || date;
+    $("dayStatus").value = d.status || "closed";
+    $("odoStart").value = d.odo_start ?? "";
+    $("odoEnd").value = d.odo_end ?? "";
+    $("mpg").value = d.mpg ?? "";
+    $("gasPrice").value = d.gas_price_per_gallon ?? "";
+    $("fuelTotal").value = d.fuel_total ?? "";
+    $("fuelGallons").value = d.fuel_gallons ?? "";
+    $("saveDayBtn").textContent = "Actualizar día";
+
+    showTab("day");
+    renderDayCalc();
+
+    const status = $("calcStatus");
+    if (status) {
+      status.className = "notice";
+      status.textContent = "Editando " + date + ". Completa o corrige los campos y pulsa Actualizar día.";
+    }
+
+    setTimeout(() => {
+      $("workDate").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("odoStart").focus();
+    }, 100);
+  } catch (error) {
+    console.error("Error loading day", error);
+    alert("No se pudo abrir el registro para editar.");
+  }
 }
 
 async function renderDaysTable() {
@@ -692,8 +789,8 @@ async function renderDaysTable() {
       <td class="right">${money(d.irs_mileage_deduction)}</td>
       <td>
         <div class="list-actions">
-          <button class="secondary" onclick="loadDay('${d.work_date}')">Editar</button>
-          <button class="danger" onclick="deleteDay('${d.work_date}')">Borrar</button>
+          <button type="button" class="secondary day-action" data-action="edit" data-date="${d.work_date}">Editar</button>
+          <button type="button" class="danger day-action" data-action="delete" data-date="${d.work_date}">Borrar</button>
         </div>
       </td>
     </tr>
@@ -769,8 +866,8 @@ async function renderEarningsTable() {
       <td class="right">${e.confirmed_weekly_earnings ? ((e.confirmed_tips || 0) / e.confirmed_weekly_earnings * 100).toFixed(1) + "%" : "—"}</td>
       <td>
         <div class="list-actions">
-          <button class="secondary" onclick="loadEarning('${e.week_start}')">Editar</button>
-          <button class="danger" onclick="deleteEarning('${e.week_start}')">Borrar</button>
+          <button type="button" class="secondary" onclick="loadEarning('${e.week_start}')">Editar</button>
+          <button type="button" class="danger" onclick="deleteEarning('${e.week_start}')">Borrar</button>
         </div>
       </td>
     </tr>
@@ -1040,9 +1137,25 @@ async function wipeDB() {
   await refreshAll();
 }
 
+function handleDayTableAction(event) {
+  const button = event.target.closest("button[data-action][data-date]");
+  if (!button) return;
+
+  const action = button.dataset.action;
+  const date = button.dataset.date;
+
+  if (action === "edit") {
+    loadDay(date);
+  } else if (action === "delete") {
+    deleteDay(date);
+  }
+}
+
 function bindEvents() {
   document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
-  $("calcDayBtn").addEventListener("click", renderDayCalc);
+  $("daysTable").addEventListener("click", handleDayTableAction);
+  $("recentDays").addEventListener("click", handleDayTableAction);
+  $("calcDayBtn").addEventListener("click", () => renderDayCalc(true));
   ["odoStart","odoEnd","mpg","gasPrice","fuelTotal","fuelGallons"].forEach(id => $(id).addEventListener("input", renderDayCalc));
   $("saveDayBtn").addEventListener("click", saveDay);
   $("clearDayBtn").addEventListener("click", () => clearDay());
@@ -1063,19 +1176,34 @@ function bindEvents() {
 }
 
 (async function init(){
-  await openDB();
   bindEvents();
   $("workDate").value = todayISO();
   $("dayStatus").value = "closed";
   $("reportYear").value = new Date().getFullYear();
   $("reportMonth").value = String(new Date().getMonth()+1).padStart(2,"0");
   $("setTaxYear").value = new Date().getFullYear();
-  await loadSettings();
-  await refreshAll();
+  renderDayCalc();
+
+  try {
+    await openDB();
+    await loadSettings();
+    await refreshAll();
+  } catch (e) {
+    console.error("Database init error", e);
+    const status = $("calcStatus");
+    if (status) {
+      status.className = "notice warn";
+      status.textContent = "La base de datos local no inició, pero Calcular sigue disponible. Recarga para intentar guardar.";
+    }
+  }
+
   if ("serviceWorker" in navigator) {
     try { await navigator.serviceWorker.register("service-worker.js"); } catch(e) { console.log("SW no registrado", e); }
   }
 })();
+
+window.loadDay = loadDay;
+window.deleteDay = deleteDay;
 </script>
 </body>
 </html>
