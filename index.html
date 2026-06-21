@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
-  <title>Spark Mileage + Taxes v0.5</title>
+  <title>Spark Mileage + Taxes v0.6</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -221,12 +221,16 @@
     }
     .footerbar button { padding: 9px 12px; }
     .hidden { display: none !important; }
+    .ocr-filled { border-color: var(--good) !important; box-shadow: 0 0 0 3px rgba(52,211,153,.12) !important; }
+    .ocr-progress { font-variant-numeric: tabular-nums; }
+    .ocr-raw { white-space: pre-wrap; max-height: 180px; overflow:auto; background:var(--input); border:1px solid var(--line); border-radius:12px; padding:10px; }
+    button:disabled { opacity:.55; cursor:wait; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
   </style>
 </head>
 <body>
 <header>
-  <h1>Spark Mileage + Taxes <span style="font-size:12px;color:#9ca3af;font-weight:700;">v0.5</span></h1>
+  <h1>Spark Mileage + Taxes <span style="font-size:12px;color:#9ca3af;font-weight:700;">v0.6</span></h1>
   <nav class="tabs" aria-label="Secciones">
     <button type="button" class="tab active" data-tab="dashboard">Dashboard</button>
     <button type="button" class="tab" data-tab="day">Día</button>
@@ -312,8 +316,17 @@
       </div>
 
       <div class="notice">
-        v0.5: Editar y Guardar día corregidos. Los registros incompletos no se guardan sin confirmación.
+        v0.6: OCR local en el navegador. Revisa los valores detectados antes de guardar. La primera lectura necesita internet para descargar el motor OCR.
       </div>
+      <div class="btnrow">
+        <button type="button" class="secondary" id="ocrAllBtn">Extraer datos de fotos</button>
+        <button type="button" class="secondary hidden" id="ocrSavedBtn">Reprocesar fotos guardadas</button>
+      </div>
+      <div id="ocrStatus" class="notice ocr-progress">Selecciona una foto. La extracción comenzará automáticamente.</div>
+      <details>
+        <summary class="small">Ver texto OCR detectado</summary>
+        <pre id="ocrRaw" class="ocr-raw mono">Sin lecturas.</pre>
+      </details>
 
       <div class="btnrow">
         <button type="button" class="good" id="calcDayBtn">Calcular</button>
@@ -366,6 +379,10 @@
       <div class="notice">
         Cash tips no se registran. Tips aquí = Confirmed Tips dentro de Spark.
       </div>
+      <div class="btnrow">
+        <button type="button" class="secondary" id="ocrEarningsBtn">Extraer ganancias de captura</button>
+      </div>
+      <div id="ocrEarningsStatus" class="notice ocr-progress">Selecciona la captura semanal de Spark.</div>
       <div class="btnrow">
         <button type="button" id="saveEarningsBtn">Guardar ganancias</button>
         <button type="button" class="secondary" id="clearEarningsBtn">Limpiar</button>
@@ -468,7 +485,7 @@
         <button type="button" class="danger" id="wipeBtn">Borrar toda la BD</button>
       </div>
       <div class="notice">
-        El IRS rate queda editable por año. Default v0.1: 0.725 para 2026.
+        El IRS rate queda editable por año. Default v0.6: 0.725 para 2026.
       </div>
     </div>
   </section>
@@ -479,6 +496,7 @@
   <button type="button" class="secondary" id="quickReportBtn">Reporte</button>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const DB_NAME = "sparkMileageTaxesDB";
 const DB_VERSION = 1;
@@ -490,6 +508,12 @@ let settings = {
   vehicleMethod: "standard_mileage_only"
 };
 let editingDayDate = null;
+let editingSavedImages = { start: null, fuel: null, end: null };
+let ocrWorkerPromise = null;
+let ocrBusy = false;
+let ocrProgressTarget = "day";
+let ocrProgressLabel = "OCR";
+let ocrState = { start: null, fuel: null, end: null, earnings: null };
 
 
 const $ = (id) => document.getElementById(id);
@@ -587,6 +611,361 @@ async function fileToDataUrl(input) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(f);
   });
+}
+
+
+function setOcrStatus(message, kind = "", target = "day") {
+  const el = target === "earnings" ? $("ocrEarningsStatus") : $("ocrStatus");
+  if (!el) return;
+  el.className = "notice ocr-progress" + (kind ? " " + kind : "");
+  el.textContent = message;
+}
+
+function updateOcrRaw() {
+  const lines = [];
+  for (const role of ["start", "fuel", "end", "earnings"]) {
+    const item = ocrState[role];
+    if (!item) continue;
+    lines.push("[" + role.toUpperCase() + "]");
+    if (item.summary) lines.push(item.summary);
+    if (item.raw_text) lines.push(item.raw_text.trim());
+    lines.push("");
+  }
+  if ($("ocrRaw")) $("ocrRaw").textContent = lines.join("\n") || "Sin lecturas.";
+}
+
+function translateOcrStage(stage) {
+  const map = {
+    "loading tesseract core": "cargando motor",
+    "initializing tesseract": "inicializando",
+    "loading language traineddata": "cargando idioma",
+    "initializing api": "preparando OCR",
+    "recognizing text": "leyendo imagen"
+  };
+  return map[stage] || stage || "procesando";
+}
+
+async function getOcrWorker() {
+  if (!window.Tesseract) throw new Error("No se pudo cargar Tesseract.js. Verifica internet y recarga.");
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = Tesseract.createWorker("eng", 1, {
+      logger: (m) => {
+        const pct = typeof m.progress === "number" ? " " + Math.round(m.progress * 100) + "%" : "";
+        setOcrStatus(ocrProgressLabel + ": " + translateOcrStage(m.status) + pct, "", ocrProgressTarget);
+      },
+      errorHandler: (err) => console.error("OCR worker error", err)
+    });
+  }
+  return ocrWorkerPromise;
+}
+
+function setOcrButtonsDisabled(disabled) {
+  ["ocrAllBtn", "ocrSavedBtn", "ocrEarningsBtn"].forEach(id => { if ($(id)) $(id).disabled = disabled; });
+}
+
+function imageFromSource(source) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let url = source;
+    let revoke = false;
+    if (source instanceof Blob) {
+      url = URL.createObjectURL(source);
+      revoke = true;
+    }
+    img.onload = () => {
+      if (revoke) URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      if (revoke) URL.revokeObjectURL(url);
+      reject(new Error("No se pudo abrir la imagen."));
+    };
+    img.src = url;
+  });
+}
+
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0, wB = 0, maxVar = 0, threshold = 128;
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += i * hist[i];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > maxVar) { maxVar = between; threshold = i; }
+  }
+  return threshold;
+}
+
+function cropCanvas(img, rect, binary = true) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const sx = Math.max(0, Math.round(iw * rect.x));
+  const sy = Math.max(0, Math.round(ih * rect.y));
+  const sw = Math.max(1, Math.min(iw - sx, Math.round(iw * rect.w)));
+  const sh = Math.max(1, Math.min(ih - sy, Math.round(ih * rect.h)));
+  const scale = Math.min(3, 1900 / sw, 1000 / sh);
+  const pad = 24;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(sw * scale) + pad * 2;
+  canvas.height = Math.round(sh * scale) + pad * 2;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, sw, sh, pad, pad, canvas.width - pad * 2, canvas.height - pad * 2);
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const hist = new Array(256).fill(0);
+  let sum = 0;
+  for (let i = 0; i < data.data.length; i += 4) {
+    const g = Math.round(0.299 * data.data[i] + 0.587 * data.data[i+1] + 0.114 * data.data[i+2]);
+    hist[g]++; sum += g;
+  }
+  const mean = sum / (data.data.length / 4);
+  const threshold = otsuThreshold(hist, data.data.length / 4);
+  for (let i = 0; i < data.data.length; i += 4) {
+    const g = Math.round(0.299 * data.data[i] + 0.587 * data.data[i+1] + 0.114 * data.data[i+2]);
+    let v;
+    if (binary) {
+      v = g > threshold ? 255 : 0;
+      if (mean < 128) v = 255 - v;
+    } else {
+      v = Math.max(0, Math.min(255, (g - 128) * 1.8 + 128));
+      if (mean < 105) v = 255 - v;
+    }
+    data.data[i] = data.data[i+1] = data.data[i+2] = v;
+    data.data[i+3] = 255;
+  }
+  ctx.putImageData(data, 0, 0);
+  return canvas;
+}
+
+async function recognizeCanvas(canvas, whitelist = "0123456789.", psm = "7", target = "day", label = "OCR") {
+  ocrProgressTarget = target;
+  ocrProgressLabel = label;
+  const worker = await getOcrWorker();
+  await worker.setParameters({
+    tessedit_pageseg_mode: psm,
+    tessedit_char_whitelist: whitelist,
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300"
+  });
+  const result = await worker.recognize(canvas);
+  return { text: result.data.text || "", confidence: result.data.confidence || 0 };
+}
+
+function normalizeDigits(text) {
+  return String(text || "")
+    .replace(/[OoQD]/g, "0")
+    .replace(/[Il|!]/g, "1")
+    .replace(/[Ss]/g, "5")
+    .replace(/[Bb]/g, "8")
+    .replace(/[Zz]/g, "2")
+    .replace(/,/g, ".");
+}
+
+function numericTokens(text) {
+  const fixed = normalizeDigits(text);
+  return (fixed.match(/\d+(?:\.\d+)?/g) || []).map(s => ({ raw: s, value: Number(s) })).filter(x => Number.isFinite(x.value));
+}
+
+function parseOdometer(text) {
+  const fixed = normalizeDigits(text);
+  const groups = fixed.match(/\d{4,7}/g) || [];
+  const values = groups.map(Number).filter(n => n >= 1000 && n <= 9999999);
+  return values.length ? Math.max(...values) : null;
+}
+
+function inferDisplayNumber(text, role) {
+  const tokens = numericTokens(text);
+  const ranges = {
+    total: [1, 300],
+    gallons: [0.1, 60],
+    mpg: [3, 60]
+  };
+  const [min, max] = ranges[role];
+  let candidates = tokens.filter(t => t.value >= min && t.value <= max);
+  const preferredDecimals = role === "total" ? 2 : role === "gallons" ? 3 : 1;
+  const exact = candidates.filter(t => (t.raw.split(".")[1] || "").length === preferredDecimals);
+  if (exact.length) candidates = exact;
+  if (candidates.length) return candidates[0].value;
+
+  const digitGroups = normalizeDigits(text).match(/\d{2,6}/g) || [];
+  for (const digits of digitGroups) {
+    const decimals = preferredDecimals;
+    if (digits.length <= decimals) continue;
+    const value = Number(digits.slice(0, -decimals) + "." + digits.slice(-decimals));
+    if (value >= min && value <= max) return value;
+  }
+  return null;
+}
+
+function setExtractedField(id, value, decimals = null) {
+  if (value == null || !Number.isFinite(Number(value))) return;
+  const input = $(id);
+  input.value = decimals == null ? String(value) : Number(value).toFixed(decimals).replace(/0+$/, "").replace(/\.$/, "");
+  input.classList.add("ocr-filled");
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function extractDashboard(source, role) {
+  const img = await imageFromSource(source);
+  const odoRects = [
+    { x: 0.16, y: 0.74, w: 0.72, h: 0.25 },
+    { x: 0.02, y: 0.67, w: 0.96, h: 0.32 }
+  ];
+  let odo = null, odoRead = null;
+  for (let i = 0; i < odoRects.length && odo == null; i++) {
+    odoRead = await recognizeCanvas(cropCanvas(img, odoRects[i], true), "0123456789", "7", "day", role === "start" ? "Tablero inicio" : "Tablero fin");
+    odo = parseOdometer(odoRead.text);
+  }
+  let mpg = null, mpgRead = null;
+  if (role === "end") {
+    const mpgRects = [
+      { x: 0.25, y: 0.18, w: 0.50, h: 0.48 },
+      { x: 0.18, y: 0.10, w: 0.64, h: 0.62 }
+    ];
+    for (let i = 0; i < mpgRects.length && mpg == null; i++) {
+      mpgRead = await recognizeCanvas(cropCanvas(img, mpgRects[i], true), "0123456789.", "7", "day", "MPG final");
+      mpg = inferDisplayNumber(mpgRead.text, "mpg");
+    }
+  }
+  return {
+    odometer: odo,
+    mpg,
+    confidence: Math.round(((odoRead?.confidence || 0) + (mpgRead?.confidence || 0)) / (role === "end" ? 2 : 1)),
+    raw_text: [odoRead?.text, mpgRead?.text].filter(Boolean).join("\n"),
+    summary: "odometer=" + (odo ?? "?") + (role === "end" ? ", mpg=" + (mpg ?? "?") : "")
+  };
+}
+
+async function extractFuel(source) {
+  const img = await imageFromSource(source);
+  const totalRead = await recognizeCanvas(cropCanvas(img, { x: 0.12, y: 0.12, w: 0.78, h: 0.42 }, true), "0123456789.$", "7", "day", "Bomba total");
+  const gallonsRead = await recognizeCanvas(cropCanvas(img, { x: 0.12, y: 0.43, w: 0.78, h: 0.40 }, true), "0123456789.", "7", "day", "Bomba galones");
+  let total = inferDisplayNumber(totalRead.text, "total");
+  let gallons = inferDisplayNumber(gallonsRead.text, "gallons");
+  if (total == null || gallons == null) {
+    const fullRead = await recognizeCanvas(cropCanvas(img, { x: 0.08, y: 0.10, w: 0.86, h: 0.76 }, true), "0123456789.$", "6", "day", "Bomba completa");
+    const tokens = numericTokens(fullRead.text).map(t => t.value);
+    if (total == null) total = tokens.find(v => v >= 1 && v <= 300) ?? null;
+    if (gallons == null) gallons = tokens.find(v => v >= 0.1 && v <= 60 && v !== total) ?? null;
+  }
+  const price = total && gallons ? total / gallons : null;
+  return {
+    total, gallons, price,
+    confidence: Math.round(((totalRead.confidence || 0) + (gallonsRead.confidence || 0)) / 2),
+    raw_text: totalRead.text + "\n" + gallonsRead.text,
+    summary: "total=" + (total ?? "?") + ", gallons=" + (gallons ?? "?") + ", price=" + (price ? price.toFixed(3) : "?")
+  };
+}
+
+async function processDaySource(role, source) {
+  if (!source) return false;
+  if (ocrBusy) { alert("Hay otra extracción en curso."); return false; }
+  ocrBusy = true;
+  setOcrButtonsDisabled(true);
+  try {
+    let result;
+    if (role === "fuel") result = await extractFuel(source);
+    else result = await extractDashboard(source, role);
+    ocrState[role] = result;
+    if (role === "start") setExtractedField("odoStart", result.odometer, 0);
+    if (role === "end") {
+      setExtractedField("odoEnd", result.odometer, 0);
+      setExtractedField("mpg", result.mpg, 2);
+    }
+    if (role === "fuel") {
+      setExtractedField("fuelTotal", result.total, 2);
+      setExtractedField("fuelGallons", result.gallons, 3);
+      setExtractedField("gasPrice", result.price, 3);
+    }
+    renderDayCalc();
+    updateOcrRaw();
+    const missing = role === "fuel" ? (result.total == null || result.gallons == null) : (result.odometer == null || (role === "end" && result.mpg == null));
+    setOcrStatus(missing ? "Lectura parcial. Revisa/completa los campos resaltados." : "Datos detectados. Revísalos y pulsa Guardar día.", missing ? "warn" : "ok", "day");
+    return !missing;
+  } catch (error) {
+    console.error(error);
+    setOcrStatus("Error OCR: " + error.message, "bad", "day");
+    return false;
+  } finally {
+    ocrBusy = false;
+    setOcrButtonsDisabled(false);
+  }
+}
+
+async function processSelectedDayImages() {
+  const jobs = [
+    ["start", $("imgStart").files?.[0]],
+    ["fuel", $("imgFuel").files?.[0]],
+    ["end", $("imgEnd").files?.[0]]
+  ].filter(x => x[1]);
+  if (!jobs.length) { alert("Selecciona al menos una foto."); return; }
+  for (const [role, file] of jobs) await processDaySource(role, file);
+}
+
+async function processSavedDayImages() {
+  const jobs = Object.entries(editingSavedImages).filter(([, id]) => id);
+  if (!jobs.length) { alert("Este registro no tiene fotos guardadas."); return; }
+  for (const [role, id] of jobs) {
+    const image = await getOne("images", id);
+    if (image?.data_url) await processDaySource(role, image.data_url);
+  }
+}
+
+function parseMoneyAfterLabel(text, labelPattern) {
+  const fixed = String(text || "").replace(/\s+/g, " ");
+  const re = new RegExp(labelPattern + "[^0-9]{0,30}\\$?\\s*([0-9,]+\\.[0-9]{2})", "i");
+  const m = fixed.match(re);
+  return m ? Number(m[1].replace(/,/g, "")) : null;
+}
+
+async function processEarningsSource(source) {
+  if (!source) { alert("Selecciona una captura de ganancias."); return; }
+  if (ocrBusy) { alert("Hay otra extracción en curso."); return; }
+  ocrBusy = true;
+  setOcrButtonsDisabled(true);
+  try {
+    const img = await imageFromSource(source);
+    const canvas = cropCanvas(img, { x: 0, y: 0.04, w: 1, h: 0.48 }, false);
+    const read = await recognizeCanvas(canvas, "", "6", "earnings", "Ganancias semanales");
+    const text = read.text;
+    let total = parseMoneyAfterLabel(text, "confirmed\\s+weekly\\s+earnings");
+    let trips = parseMoneyAfterLabel(text, "trip\\s+earnings");
+    let tips = parseMoneyAfterLabel(text, "confirmed\\s+tips");
+    const amounts = numericTokens(text).map(t => t.value).filter(v => v > 1 && v < 100000);
+    if (total == null && amounts.length) total = Math.max(...amounts);
+    if ((trips == null || tips == null) && total != null) {
+      outer: for (let i = 0; i < amounts.length; i++) {
+        for (let j = i + 1; j < amounts.length; j++) {
+          if (Math.abs(amounts[i] + amounts[j] - total) <= 0.06) {
+            if (trips == null) trips = Math.max(amounts[i], amounts[j]);
+            if (tips == null) tips = Math.min(amounts[i], amounts[j]);
+            break outer;
+          }
+        }
+      }
+    }
+    setExtractedField("confirmedWeekly", total, 2);
+    setExtractedField("tripEarnings", trips, 2);
+    setExtractedField("confirmedTips", tips, 2);
+    ocrState.earnings = { total, trips, tips, confidence: Math.round(read.confidence || 0), raw_text: text, summary: "total=" + (total ?? "?") + ", trips=" + (trips ?? "?") + ", tips=" + (tips ?? "?") };
+    updateOcrRaw();
+    const partial = total == null || trips == null || tips == null;
+    setOcrStatus(partial ? "Lectura parcial. Completa los importes faltantes." : "Ganancias detectadas. Revísalas antes de guardar.", partial ? "warn" : "ok", "earnings");
+  } catch (error) {
+    console.error(error);
+    setOcrStatus("Error OCR: " + error.message, "bad", "earnings");
+  } finally {
+    ocrBusy = false;
+    setOcrButtonsDisabled(false);
+  }
 }
 
 function calcDayObj() {
@@ -700,6 +1079,7 @@ async function saveDay() {
 
   const oldKey = editingDayDate || d.work_date;
   const existing = await getOne("days", oldKey);
+  d.ocr = Object.values(ocrState).some(Boolean) ? JSON.parse(JSON.stringify(ocrState)) : (existing?.ocr || null);
 
   const newStartImage = await fileToDataUrl($("imgStart"));
   const newFuelImage = await fileToDataUrl($("imgFuel"));
@@ -728,7 +1108,13 @@ function clearDay(resetDate=true) {
   ["odoStart","odoEnd","mpg","gasPrice","fuelTotal","fuelGallons","imgStart","imgFuel","imgEnd"].forEach(id => $(id).value = "");
   $("dayStatus").value = "closed";
   editingDayDate = null;
+  editingSavedImages = { start: null, fuel: null, end: null };
+  ocrState = { start: null, fuel: null, end: null, earnings: null };
   $("saveDayBtn").textContent = "Guardar día";
+  if ($("ocrSavedBtn")) $("ocrSavedBtn").classList.add("hidden");
+  if ($("ocrRaw")) $("ocrRaw").textContent = "Sin lecturas.";
+  setOcrStatus("Selecciona una foto. La extracción comenzará automáticamente.", "", "day");
+  ["odoStart","odoEnd","mpg","gasPrice","fuelTotal","fuelGallons"].forEach(id => $(id).classList.remove("ocr-filled"));
   renderDayCalc();
 }
 
@@ -751,6 +1137,11 @@ async function loadDay(date) {
     $("fuelTotal").value = d.fuel_total ?? "";
     $("fuelGallons").value = d.fuel_gallons ?? "";
     $("saveDayBtn").textContent = "Actualizar día";
+    editingSavedImages = { start: d.image_start_id || null, fuel: d.image_fuel_id || null, end: d.image_end_id || null };
+    ocrState = d.ocr || { start: null, fuel: null, end: null, earnings: null };
+    updateOcrRaw();
+    if (Object.values(editingSavedImages).some(Boolean)) $("ocrSavedBtn").classList.remove("hidden");
+    else $("ocrSavedBtn").classList.add("hidden");
 
     showTab("day");
     renderDayCalc();
@@ -832,6 +1223,7 @@ async function saveEarnings() {
     cash_tips_tracked: false,
     source: "spark_app_screenshot_or_manual",
     image_id,
+    ocr: ocrState.earnings || null,
     updated_at: new Date().toISOString()
   });
   alert("Ganancias guardadas");
@@ -840,6 +1232,9 @@ async function saveEarnings() {
 }
 function clearEarnings() {
   ["weekStart","weekEnd","confirmedWeekly","tripEarnings","confirmedTips","imgEarnings"].forEach(id => $(id).value = "");
+  ocrState.earnings = null;
+  setOcrStatus("Selecciona la captura semanal de Spark.", "", "earnings");
+  ["confirmedWeekly","tripEarnings","confirmedTips"].forEach(id => $(id).classList.remove("ocr-filled"));
 }
 async function loadEarning(week) {
   const e = await getOne("earnings", week);
@@ -1155,6 +1550,13 @@ function bindEvents() {
   document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
   $("daysTable").addEventListener("click", handleDayTableAction);
   $("recentDays").addEventListener("click", handleDayTableAction);
+  $("ocrAllBtn").addEventListener("click", processSelectedDayImages);
+  $("ocrSavedBtn").addEventListener("click", processSavedDayImages);
+  $("ocrEarningsBtn").addEventListener("click", () => processEarningsSource($("imgEarnings").files?.[0]));
+  $("imgStart").addEventListener("change", () => processDaySource("start", $("imgStart").files?.[0]));
+  $("imgFuel").addEventListener("change", () => processDaySource("fuel", $("imgFuel").files?.[0]));
+  $("imgEnd").addEventListener("change", () => processDaySource("end", $("imgEnd").files?.[0]));
+  $("imgEarnings").addEventListener("change", () => processEarningsSource($("imgEarnings").files?.[0]));
   $("calcDayBtn").addEventListener("click", () => renderDayCalc(true));
   ["odoStart","odoEnd","mpg","gasPrice","fuelTotal","fuelGallons"].forEach(id => $(id).addEventListener("input", renderDayCalc));
   $("saveDayBtn").addEventListener("click", saveDay);

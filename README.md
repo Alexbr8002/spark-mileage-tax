@@ -1,4 +1,4 @@
-# Spark Mileage + Taxes — PWA v0.5
+# Spark Mileage + Taxes — PWA v0.6
 
 ## Qué incluye
 - Registro diario manual:
@@ -80,3 +80,14 @@ En Android/Chrome, al usar “Add to Home screen”, debe aparecer como icono de
 - Guardar no permite crear registros vacíos.
 - Al editar se conservan las fotos existentes si no se eligen imágenes nuevas.
 - Si cambia la fecha durante una edición, se elimina la clave anterior para evitar duplicados.
+
+
+## Cambio v0.6 — OCR
+- OCR en el navegador con Tesseract.js v5.
+- Tablero inicio: extrae odómetro.
+- Bomba: extrae total y galones; calcula precio por galón.
+- Tablero fin: extrae odómetro y MPG.
+- Captura semanal Spark: extrae total, Trip Earnings y Confirmed Tips.
+- Los campos quedan editables y requieren revisión antes de guardar.
+- Permite reprocesar fotos ya guardadas al editar días antiguos.
+- La primera lectura requiere internet para descargar el motor y el idioma OCR.
