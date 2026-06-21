@@ -1,4 +1,4 @@
-# Spark Mileage + Taxes — PWA v0.6
+# Spark Mileage + Taxes — PWA v0.7
 
 ## Qué incluye
 - Registro diario manual:
@@ -91,3 +91,11 @@ En Android/Chrome, al usar “Add to Home screen”, debe aparecer como icono de
 - Los campos quedan editables y requieren revisión antes de guardar.
 - Permite reprocesar fotos ya guardadas al editar días antiguos.
 - La primera lectura requiere internet para descargar el motor y el idioma OCR.
+
+
+## Cambio v0.7
+- Al editar un día incompleto con fotos guardadas, inicia OCR automáticamente.
+- Muestra “Fotos pendientes” en registros que tienen evidencia pero no números.
+- Después del OCR cambia el botón a “Confirmar y actualizar”.
+- Dashboard muestra cuántos días incompletos hay.
+- Reprocesar fotos guardadas recalcula el resultado al terminar.

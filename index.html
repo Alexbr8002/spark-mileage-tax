@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
-  <title>Spark Mileage + Taxes v0.6</title>
+  <title>Spark Mileage + Taxes v0.7</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -230,7 +230,7 @@
 </head>
 <body>
 <header>
-  <h1>Spark Mileage + Taxes <span style="font-size:12px;color:#9ca3af;font-weight:700;">v0.6</span></h1>
+  <h1>Spark Mileage + Taxes <span style="font-size:12px;color:#9ca3af;font-weight:700;">v0.7</span></h1>
   <nav class="tabs" aria-label="Secciones">
     <button type="button" class="tab active" data-tab="dashboard">Dashboard</button>
     <button type="button" class="tab" data-tab="day">Día</button>
@@ -316,13 +316,14 @@
       </div>
 
       <div class="notice">
-        v0.6: OCR local en el navegador. Revisa los valores detectados antes de guardar. La primera lectura necesita internet para descargar el motor OCR.
+        v0.7: al editar un día incompleto con fotos guardadas, la app intenta recuperar automáticamente odómetro, MPG y gasolina. Revisa y confirma antes de actualizar.
       </div>
       <div class="btnrow">
         <button type="button" class="secondary" id="ocrAllBtn">Extraer datos de fotos</button>
         <button type="button" class="secondary hidden" id="ocrSavedBtn">Reprocesar fotos guardadas</button>
       </div>
       <div id="ocrStatus" class="notice ocr-progress">Selecciona una foto. La extracción comenzará automáticamente.</div>
+      <div id="recoveryHint" class="notice hidden"></div>
       <details>
         <summary class="small">Ver texto OCR detectado</summary>
         <pre id="ocrRaw" class="ocr-raw mono">Sin lecturas.</pre>
@@ -912,11 +913,24 @@ async function processSelectedDayImages() {
 
 async function processSavedDayImages() {
   const jobs = Object.entries(editingSavedImages).filter(([, id]) => id);
-  if (!jobs.length) { alert("Este registro no tiene fotos guardadas."); return; }
+  if (!jobs.length) {
+    alert("Este registro no tiene fotos guardadas.");
+    return false;
+  }
+
+  let processed = 0;
+
   for (const [role, id] of jobs) {
     const image = await getOne("images", id);
-    if (image?.data_url) await processDaySource(role, image.data_url);
+
+    if (image?.data_url) {
+      await processDaySource(role, image.data_url);
+      processed++;
+    }
   }
+
+  renderDayCalc();
+  return processed > 0;
 }
 
 function parseMoneyAfterLabel(text, labelPattern) {
@@ -1113,9 +1127,60 @@ function clearDay(resetDate=true) {
   $("saveDayBtn").textContent = "Guardar día";
   if ($("ocrSavedBtn")) $("ocrSavedBtn").classList.add("hidden");
   if ($("ocrRaw")) $("ocrRaw").textContent = "Sin lecturas.";
+  if ($("recoveryHint")) $("recoveryHint").classList.add("hidden");
   setOcrStatus("Selecciona una foto. La extracción comenzará automáticamente.", "", "day");
   ["odoStart","odoEnd","mpg","gasPrice","fuelTotal","fuelGallons"].forEach(id => $(id).classList.remove("ocr-filled"));
   renderDayCalc();
+}
+
+
+function isDayIncomplete(day) {
+  return (
+    day?.odo_start == null ||
+    day?.odo_end == null ||
+    day?.mpg == null ||
+    day?.gas_price_per_gallon == null
+  );
+}
+
+function hasSavedDayImages(day) {
+  return Boolean(day?.image_start_id || day?.image_fuel_id || day?.image_end_id);
+}
+
+async function autoRecoverEditedDay(day) {
+  const hint = $("recoveryHint");
+
+  if (!isDayIncomplete(day) || !hasSavedDayImages(day)) {
+    if (hint) hint.classList.add("hidden");
+    return;
+  }
+
+  if (hint) {
+    hint.className = "notice warn";
+    hint.textContent = "Este día tiene fotos guardadas pero faltan datos numéricos. Iniciando recuperación automática…";
+  }
+
+  setOcrStatus("Recuperando datos de las fotos guardadas…", "", "day");
+
+  try {
+    await processSavedDayImages();
+    renderDayCalc();
+
+    if (hint) {
+      hint.className = "notice ok";
+      hint.textContent = "Recuperación terminada. Revisa los campos y pulsa Actualizar día para guardar los números.";
+    }
+
+    $("saveDayBtn").textContent = "Confirmar y actualizar";
+    $("odoStart").scrollIntoView({ behavior: "smooth", block: "center" });
+  } catch (error) {
+    console.error("Auto recovery failed", error);
+
+    if (hint) {
+      hint.className = "notice bad";
+      hint.textContent = "No se pudo recuperar automáticamente. Usa Reprocesar fotos guardadas o completa los campos manualmente.";
+    }
+  }
 }
 
 async function loadDay(date) {
@@ -1152,10 +1217,14 @@ async function loadDay(date) {
       status.textContent = "Editando " + date + ". Completa o corrige los campos y pulsa Actualizar día.";
     }
 
-    setTimeout(() => {
+    setTimeout(async () => {
       $("workDate").scrollIntoView({ behavior: "smooth", block: "start" });
       $("odoStart").focus();
-    }, 100);
+
+      if (isDayIncomplete(d) && hasSavedDayImages(d)) {
+        await autoRecoverEditedDay(d);
+      }
+    }, 150);
   } catch (error) {
     console.error("Error loading day", error);
     alert("No se pudo abrir el registro para editar.");
@@ -1179,6 +1248,7 @@ async function renderDaysTable() {
       <td class="right">${money(d.estimated_fuel_cost)}</td>
       <td class="right">${money(d.irs_mileage_deduction)}</td>
       <td>
+        ${isDayIncomplete(d) && hasSavedDayImages(d) ? '<span class="pill warn">Fotos pendientes</span>' : ''}
         <div class="list-actions">
           <button type="button" class="secondary day-action" data-action="edit" data-date="${d.work_date}">Editar</button>
           <button type="button" class="danger day-action" data-action="delete" data-date="${d.work_date}">Borrar</button>
@@ -1359,13 +1429,15 @@ async function renderDashboard() {
   const year = new Date().getFullYear();
   const month = String(new Date().getMonth()+1).padStart(2,"0");
   const r = await buildReport(year, month);
+  const incompleteDays = r.days.filter(d => isDayIncomplete(d)).length;
+
   $("dashMetrics").innerHTML = [
     metric("Mes ingresos", money(r.income)),
     metric("Mes millas Spark", miles(r.businessMiles)),
     metric("Profit operativo", money(r.operatingProfit), r.operatingProfit >= 0 ? "ok" : "bad"),
     metric("IRS deducción mes", money(r.irsDeduction)),
     metric("SE tax aprox. mes", money(r.seTax), "warn"),
-    metric("Tips app %", r.income ? (r.appTips / r.income * 100).toFixed(1) + "%" : "—")
+    metric("Días incompletos", String(incompleteDays), incompleteDays ? "warn" : "ok")
   ].join("");
 }
 
